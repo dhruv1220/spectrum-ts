@@ -1,4 +1,3 @@
-import type { BackgroundPreset } from "@photon-ai/advanced-imessage/grpc";
 import type { Content, ContentBuilder } from "@spectrum-ts/core";
 import {
   buildPhotoAction,
@@ -6,6 +5,43 @@ import {
   photoActionSchema,
 } from "@spectrum-ts/core/authoring";
 import z from "zod";
+
+// Mirrors the SDK's `BackgroundPreset`. Kept local because `imessage-local`
+// shares this file without depending on the SDK; `test/background.test.ts`
+// fails typecheck if the two lists drift.
+const BACKGROUND_PRESETS = [
+  "skyDusk",
+  "skyHaze",
+  "skySunset",
+  "skyClear",
+  "skySunrise",
+  "skyDawn",
+  "waterLight",
+  "waterDark",
+  "auroraGreen",
+  "auroraPurple",
+  "auroraPink",
+  "colorMango",
+  "colorIce",
+  "colorPlum",
+  "colorDeepSea",
+  "colorGreenApple",
+  "colorCherry",
+  "colorBubblegum",
+  "colorTangerine",
+  "colorMagenta",
+  "colorLime",
+  "colorSilver",
+  "colorCarbon",
+  "colorStone",
+] as const;
+
+export type BackgroundPreset = (typeof BACKGROUND_PRESETS)[number];
+
+const presetActionSchema = z.object({
+  kind: z.literal("preset"),
+  preset: z.enum(BACKGROUND_PRESETS),
+});
 
 /**
  * iMessage-only chat background content. Lives entirely under the iMessage
@@ -22,11 +58,6 @@ import z from "zod";
  * iMessage's `send` handler narrows back to `Background` via the `isBackground`
  * type guard before dispatching to `chats.setBackground` / `removeBackground`.
  */
-const presetActionSchema = z.object({
-  kind: z.literal("preset"),
-  preset: z.custom<BackgroundPreset>((v) => typeof v === "string"),
-});
-
 export const backgroundSchema = z.object({
   type: z.literal("background"),
   __platform: z.literal("imessage"),

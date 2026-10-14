@@ -1,6 +1,9 @@
-import type { AdvancedIMessage } from "@photon-ai/advanced-imessage/grpc";
-import { describe, expect, it, vi } from "vitest";
-import { isBackground } from "@/content/background";
+import type {
+  AdvancedIMessage,
+  BackgroundPreset as SdkBackgroundPreset,
+} from "@photon-ai/advanced-imessage/grpc";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { type BackgroundPreset, isBackground } from "@/content/background";
 import { background, imessage } from "@/index";
 import { type RemoteClient, SHARED_PHONE } from "@/types";
 
@@ -12,6 +15,10 @@ const ctx = {
 };
 
 describe("background preset", () => {
+  it("lists exactly the SDK's preset names", () => {
+    expectTypeOf<BackgroundPreset>().toEqualTypeOf<SdkBackgroundPreset>();
+  });
+
   it("builds a preset background signal", async () => {
     const content = await background({ preset: "skyDusk" }).build();
 

@@ -41,8 +41,8 @@ await space.send(background("clear"));
 ```
 
 `{ preset }` accepts the name of one of Messages' built-in backgrounds. Names
-are type-checked; an unknown name passed at runtime is rejected with a
-`ValidationError` before anything is sent.
+are type-checked; an unknown name passed at runtime is rejected before anything
+is sent, with an error listing the valid names.
 
 <AccordionGroup>
   <Accordion title="Scenes" description="Sky, water, and aurora scenes.">
