@@ -332,6 +332,54 @@ describe("imessage cloud auth", () => {
     await disposeCloudAuth(clients);
   });
 
+  it("keeps the shared gateway when a shared→dedicated refresh returns a dedicated payload without an auth map", async () => {
+    const shared: FakeSharedTokenData = {
+      expiresIn: 3600,
+      token: "shared-1",
+      type: "shared",
+    };
+    const { clients, refresh } = await startClients(shared);
+    expect(clients).toHaveLength(1);
+
+    // Malformed: type claims dedicated but there is no line inventory.
+    const malformed = {
+      expiresIn: 3600,
+      type: "dedicated",
+    } as unknown as FakeDedicatedTokenData;
+    await refresh(malformed);
+
+    // The shared gateway survives untouched: retiring it before discovering
+    // the missing `auth` map would leave the client set empty until the next
+    // refresh. The stale-but-working payload is kept, so the gateway still
+    // authenticates and the error stays contained in the refresh.
+    expect(clients).toHaveLength(1);
+    expect(clients[0]?.phone).toBe("shared");
+    expect(fakeClients[0]?.close).not.toHaveBeenCalled();
+    expect(await clientOptions[0]?.token()).toBe("shared-1");
+
+    await disposeCloudAuth(clients);
+  });
+
+  it("keeps existing lines when a dedicated refresh returns a payload without an auth map", async () => {
+    const { clients, refresh } = await startClients(
+      dedicated({ "instance-1": "+15550000001" })
+    );
+    expect(clients).toHaveLength(1);
+
+    const malformed = {
+      expiresIn: 3600,
+      type: "dedicated",
+    } as unknown as FakeDedicatedTokenData;
+    await refresh(malformed);
+
+    expect(clients).toHaveLength(1);
+    expect(clients[0]?.phone).toBe("+15550000001");
+    expect(fakeClients[0]?.close).not.toHaveBeenCalled();
+    expect(await clientOptions[0]?.token()).toBe("token-instance-1");
+
+    await disposeCloudAuth(clients);
+  });
+
   it("stands up the shared gateway and retires dedicated lines on a dedicated→shared plan change", async () => {
     const { clients, refresh } = await startClients(
       dedicated({ "instance-1": "+15550000001", "instance-2": "+15550000002" })

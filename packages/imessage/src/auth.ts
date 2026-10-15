@@ -236,10 +236,11 @@ export async function createCloudClients(
     name: "imessage",
     refresh: async () => {
       const previousType = tokenData.type;
-      tokenData = await cloud.issueImessageTokens(projectId, projectSecret);
+      const next = await cloud.issueImessageTokens(projectId, projectSecret);
       lastRefreshAt = Date.now();
       try {
-        if (tokenData.type !== "dedicated") {
+        if (next.type !== "dedicated") {
+          tokenData = next;
           // dedicated → shared: the dedicated lines' token getters resolve
           // through `auth`, which a shared payload does not carry — retire
           // them and stand up the shared gateway client.
@@ -248,6 +249,18 @@ export async function createCloudClients(
           }
           return;
         }
+        // A dedicated response with no `auth` map is malformed (the Cloud
+        // endpoint's contract guarantees one). Validate before touching the
+        // live client set: retiring the shared gateway first and then throwing
+        // out of `reconcile` would leave the client set empty until the next
+        // refresh. Keeping the old payload means the next refresh retries.
+        const auth: unknown = (next as { auth?: unknown }).auth;
+        if (typeof auth !== "object" || auth === null) {
+          throw new Error(
+            "imessage token refresh returned a dedicated payload without an auth map; keeping the existing client set"
+          );
+        }
+        tokenData = next;
         // shared → dedicated: the shared gateway entry's token getter
         // resolves `tokenData.token`, which a dedicated payload does not
         // carry — retire it before reconciling the new line inventory.
