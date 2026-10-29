@@ -41,6 +41,14 @@ export interface ResumableOrderedStreamOptions<TLive, TMissed, TOutput> {
     cursor: string,
     options: FetchMissedOptions
   ) => AsyncIterable<TMissed>;
+  /**
+   * Cursor to resume from on start, e.g. one the caller persisted via
+   * `onCursor` before a restart. Without it the stream starts live-only
+   * and anything sent while no process was running is lost. When set, the
+   * first pass runs catch-up from this cursor instead of subscribing
+   * live-only.
+   */
+  initialCursor?: string;
   initialRetryDelayMs?: number;
   /**
    * Recognizes a `fetchMissed` failure that means the server rejected the
@@ -54,6 +62,18 @@ export interface ResumableOrderedStreamOptions<TLive, TMissed, TOutput> {
   /** Log provenance, e.g. "imessage.messages:+1555…". */
   label?: string;
   maxRetryDelayMs?: number;
+  /**
+   * Invoked each time the stream advances to a new cursor, so callers can
+   * persist it and resume from it after a restart. Errors thrown are
+   * logged and swallowed; persistence must never break delivery.
+   */
+  onCursor?: (cursor: string) => void;
+  /**
+   * Invoked with the rejected cursor when the server refuses it and the
+   * stream drops it, so callers can clear their stored cursor. Errors
+   * thrown are logged and swallowed.
+   */
+  onCursorRejected?: (cursor: string) => void;
   processLive: (event: TLive) => Promise<ResumableStreamItem<TOutput>>;
   processMissed: (event: TMissed) => Promise<ResumableStreamItem<TOutput>>;
   /**
@@ -200,7 +220,7 @@ export const resumableOrderedStream = <TLive, TMissed, TOutput>(
     // at most once per `PERSISTENT_FAILURE_ERROR_THRESHOLD` window instead of on
     // every retry. Reset on recovery so a later outage triggers it again.
     let lastRecoverAttempt = 0;
-    let lastCursor: string | undefined;
+    let lastCursor: string | undefined = options.initialCursor;
     let retryDelayMs = initialRetryDelayMs;
     let sleepTimer: ReturnType<typeof setTimeout> | undefined;
     let pendingTimer: ReturnType<typeof setTimeout> | undefined;
@@ -248,6 +268,19 @@ export const resumableOrderedStream = <TLive, TMissed, TOutput>(
       lastCursor = cursor;
       if (clearDelivered) {
         deliveredSinceCursor.clear();
+      }
+      try {
+        options.onCursor?.(cursor);
+      } catch (error) {
+        log.warn(
+          "cursor persistence callback failed",
+          {
+            "spectrum.stream.id": streamId,
+            "spectrum.stream.label": label,
+            "spectrum.stream.cursor": cursor,
+          },
+          error
+        );
       }
     };
 
@@ -402,8 +435,24 @@ export const resumableOrderedStream = <TLive, TMissed, TOutput>(
         ),
       };
       if (error instanceof CursorRejectedError) {
+        const rejectedCursor = lastCursor;
         lastCursor = undefined;
         deliveredSinceCursor.clear();
+        if (rejectedCursor !== undefined) {
+          try {
+            options.onCursorRejected?.(rejectedCursor);
+          } catch (callbackError) {
+            log.warn(
+              "cursor rejection callback failed",
+              {
+                "spectrum.stream.id": streamId,
+                "spectrum.stream.label": label,
+                "spectrum.stream.cursor": rejectedCursor,
+              },
+              callbackError
+            );
+          }
+        }
         log.warn(
           "resume cursor rejected; accepting event gap and resuming live",
           attrs,
